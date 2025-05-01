@@ -74,8 +74,12 @@ app.get('/api/keyoption/:symbol', async (req, res) => {
         fs.createReadStream(filePath)
             .pipe(csv())
             .on('data', (data) => {
-                if (data.Symbol && data.Symbol.toUpperCase() === symbol) {
-                    results.push(data);
+                try {
+                    if (data.Symbol && data.Symbol.toUpperCase() === symbol) {
+                        results.push(data);
+                    }
+                } catch (err) {
+                    console.error('Row parsing error:', err);
                 }
             })
             .on('end', () => {
@@ -86,10 +90,13 @@ app.get('/api/keyoption/:symbol', async (req, res) => {
                 }
             })
             .on('error', (err) => {
+                console.error('CSV parsing error:', err);
                 res.status(500).json({ error: 'CSV parsing failed' });
             });
+
     } catch (err) {
-        res.status(500).json({ error: 'Failed to read CSV file' });
+        console.error('File stream error:', err);
+        res.status(500).json({ error: 'Failed to process CSV file' });
     }
 });
 
