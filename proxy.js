@@ -101,9 +101,10 @@ app.get('/api/keyoption/:symbol', async (req, res) => {
 });
 
 // ===== HTML 파일을 제공하는 경로 설정 =====
+// ✅ 대신 아래처럼 텍스트 응답으로 처리하세요
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+    res.send('✅ Option API Server is Running.');
+  });
 
 // ===== 서버 실행 =====
 app.listen(port, () => {
