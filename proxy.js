@@ -5,30 +5,27 @@ import fs from 'fs';
 import path from 'path';
 import fetch from 'node-fetch';
 import { fileURLToPath } from 'url';
-import AbortController from 'abort-controller';
+import AbortController from 'abort-controller';    // npm i abort-controller
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
-const port = process.env.PORT || 3000; // Render의 동적 포트 지원
-
-// 요청 로깅 미들웨어
+// proxy.js 맨 위, app.use(cors()) 직전 등에 삽입
 app.use((req, res, next) => {
     console.log(new Date().toISOString(), req.method, req.originalUrl);
     next();
-});
+  });
 
-app.use(cors()); // 모든 라우트에 CORS 활성화
+const app = express();
+const port = 3000;
+
+app.use(cors());
 app.use(express.json());
 
-// ===== NASDAQ 옵션 체인 데이터 가져오기 (MaxPain용) =====
+// ===== NASDAQ Option Chain 데이터 가져오기 (MaxPain용) =====
 app.get('/api/quote/:symbol/option-chain', async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
     const assetclass = req.query.assetclass || 'stocks';
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10초 타임아웃
 
     try {
         const response = await fetch(`https://api.nasdaq.com/api/quote/${symbol}/option-chain?assetclass=${assetclass}&limit=180`, {
@@ -37,93 +34,54 @@ app.get('/api/quote/:symbol/option-chain', async (req, res) => {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
                 'Origin': 'https://www.nasdaq.com',
                 'Referer': 'https://www.nasdaq.com/',
-                'Accept-Language': 'en-US,en;q=0.9',
             },
-            signal: controller.signal,
         });
-        clearTimeout(timeout);
-
-        if (!response.ok) {
-            throw new Error(`Upstream status ${response.status}`);
-        }
         const data = await response.json();
         res.json(data);
     } catch (error) {
-        clearTimeout(timeout);
-        console.error('Nasdaq 옵션 체인 오류:', error.message);
-        res.status(502).json({ error: 'Nasdaq 옵션 체인 데이터 가져오기 실패. API 차단 가능성 있음.' });
+        console.error(error);
+        res.status(500).json({ error: 'Error fetching Nasdaq option chain data.' });
     }
 });
 
 // ===== NASDAQ 가격 데이터 가져오기 (현재가/변동률용) =====
-app.get('/api/quote/:symbol/info', async (req, res) => {
+app.get('/api/quote/:symbol/option-chain', async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
-    const params = new URLSearchParams(req.query).toString();
-    const url = `https://api.nasdaq.com/api/quote/${symbol}/info?${params}`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-
-    try {
-        const response = await fetch(url, {
-            headers: {
-                'Accept': 'application/json, text/plain, */*',
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-                'Origin': 'https://www.nasdaq.com',
-                'Referer': 'https://www.nasdaq.com/',
-                'Accept-Language': 'en-US,en;q=0.9',
-            },
-            signal: controller.signal,
-        });
-        clearTimeout(timeout);
-
-        if (!response.ok) {
-            throw new Error(`Upstream status ${response.status}`);
-        }
-        const data = await response.json();
-        res.json(data);
-    } catch (error) {
-        clearTimeout(timeout);
-        console.error('Nasdaq 정보 오류:', error.message);
-        res.status(502).json({ error: 'Nasdaq 정보 데이터 가져오기 실패. API 차단 가능성 있음.' });
-    }
-});
-
-// ===== [신규] NASDAQ 옵션 체인 데이터 프록시 =====
-app.get('/api/proxy/option-chain', async (req, res) => {
-    const symbol = req.query.symbol?.toUpperCase() || 'TSLA';
+  
+    // 1) 클라이언트가 보낸 쿼리스트링 그대로 사용
     const params = new URLSearchParams(req.query).toString();
     const url = `https://api.nasdaq.com/api/quote/${symbol}/option-chain?${params}`;
-
+  
+    // 2) 너무 오래 대기하지 않도록 타임아웃 설정 (예: 10초)
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+  
     try {
-        const response = await fetch(url, {
-            headers: {
-                'Accept': 'application/json, text/plain, */*',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-                'Origin': 'https://www.nasdaq.com',
-                'Referer': 'https://www.nasdaq.com/',
-                'Accept-Language': 'en-US,en;q=0.9',
-            },
-            signal: controller.signal,
-        });
-        clearTimeout(timeout);
-
-        if (!response.ok) {
-            throw new Error(`Upstream status ${response.status}`);
-        }
-        const data = await response.json();
-        res.json({ data });
-    } catch (error) {
-        clearTimeout(timeout);
-        console.error('Nasdaq 프록시 오류:', error.message);
-        res.status(502).json({ error: 'Nasdaq 옵션 체인 데이터 가져오기 실패. API 차단 가능성 있음.' });
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'User-Agent': 'Mozilla/5.0',  
+          'Origin': 'https://www.nasdaq.com',
+          'Referer': 'https://www.nasdaq.com/',
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+  
+      if (!response.ok) {
+        throw new Error(`Upstream status ${response.status}`);
+      }
+      const data = await response.json();
+      res.json(data);
+  
+    } catch (err) {
+      clearTimeout(timeout);
+      console.error('Proxy fetch error:', err.message);
+      res.status(502).json({ error: 'Upstream timeout or error' });
     }
-});
+  });
 
-// ===== 키 옵션 데이터 검색 =====
+// ===== [추가] Key Option Data 검색 =====
 app.get('/api/keyoption/:symbol', async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
     const results = [];
@@ -132,7 +90,7 @@ app.get('/api/keyoption/:symbol', async (req, res) => {
 
     try {
         if (!fs.existsSync(filePath)) {
-            return res.status(500).json({ error: '서버에서 CSV 파일을 찾을 수 없습니다.' });
+            return res.status(500).json({ error: 'CSV file not found on server' });
         }
 
         fs.createReadStream(filePath)
@@ -143,32 +101,34 @@ app.get('/api/keyoption/:symbol', async (req, res) => {
                         results.push(data);
                     }
                 } catch (err) {
-                    console.error('행 파싱 오류:', err);
+                    console.error('Row parsing error:', err);
                 }
             })
             .on('end', () => {
                 if (results.length === 0) {
-                    res.status(404).json({ error: `심볼에 대한 데이터 없음: ${symbol}` });
+                    res.status(404).json({ error: `No data found for symbol: ${symbol}` });
                 } else {
                     res.json({ data: results });
                 }
             })
             .on('error', (err) => {
-                console.error('CSV 파싱 오류:', err);
-                res.status(500).json({ error: 'CSV 파싱 실패' });
+                console.error('CSV parsing error:', err);
+                res.status(500).json({ error: 'CSV parsing failed' });
             });
+
     } catch (err) {
-        console.error('파일 스트림 오류:', err);
-        res.status(500).json({ error: 'CSV 파일 처리 실패' });
+        console.error('File stream error:', err);
+        res.status(500).json({ error: 'Failed to process CSV file' });
     }
 });
 
-// ===== 루트 엔드포인트 =====
+// ===== HTML 파일을 제공하는 경로 설정 =====
+// ✅ 대신 아래처럼 텍스트 응답으로 처리하세요
 app.get('/', (req, res) => {
     res.send('✅ Option API Server is Running.');
-});
+  });
 
 // ===== 서버 실행 =====
 app.listen(port, () => {
-    console.log(`✅ 서버 실행 중: http://localhost:${port}`);
+    console.log(`✅ Server is running: http://localhost:${port}`);
 });
