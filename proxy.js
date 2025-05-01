@@ -5,9 +5,16 @@ import fs from 'fs';
 import path from 'path';
 import fetch from 'node-fetch';
 import { fileURLToPath } from 'url';
+import AbortController from 'abort-controller';    // npm i abort-controller
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// proxy.js 맨 위, app.use(cors()) 직전 등에 삽입
+app.use((req, res, next) => {
+    console.log(new Date().toISOString(), req.method, req.originalUrl);
+    next();
+  });
 
 const app = express();
 const port = 3000;
@@ -38,26 +45,41 @@ app.get('/api/quote/:symbol/option-chain', async (req, res) => {
 });
 
 // ===== NASDAQ 가격 데이터 가져오기 (현재가/변동률용) =====
-app.get('/api/quote/:symbol/info', async (req, res) => {
+app.get('/api/quote/:symbol/option-chain', async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
-    const assetclass = req.query.assetclass || 'stocks';
-
+  
+    // 1) 클라이언트가 보낸 쿼리스트링 그대로 사용
+    const params = new URLSearchParams(req.query).toString();
+    const url = `https://api.nasdaq.com/api/quote/${symbol}/option-chain?${params}`;
+  
+    // 2) 너무 오래 대기하지 않도록 타임아웃 설정 (예: 10초)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+  
     try {
-        const response = await fetch(`https://api.nasdaq.com/api/quote/${symbol}/info?assetclass=${assetclass}`, {
-            headers: {
-                'Accept': 'application/json, text/plain, */*',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-                'Origin': 'https://www.nasdaq.com',
-                'Referer': 'https://www.nasdaq.com/',
-            },
-        });
-        const data = await response.json();
-        res.json(data);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Error fetching Nasdaq info data.' });
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'User-Agent': 'Mozilla/5.0',  
+          'Origin': 'https://www.nasdaq.com',
+          'Referer': 'https://www.nasdaq.com/',
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+  
+      if (!response.ok) {
+        throw new Error(`Upstream status ${response.status}`);
+      }
+      const data = await response.json();
+      res.json(data);
+  
+    } catch (err) {
+      clearTimeout(timeout);
+      console.error('Proxy fetch error:', err.message);
+      res.status(502).json({ error: 'Upstream timeout or error' });
     }
-});
+  });
 
 // ===== [추가] Key Option Data 검색 =====
 app.get('/api/keyoption/:symbol', async (req, res) => {
