@@ -1,10 +1,16 @@
-const express = require('express');
+import express from 'express';
+import cors from 'cors';
+import csv from 'csv-parser';
+import fs from 'fs';
+import path from 'path';
+import fetch from 'node-fetch';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const port = 3000;
-const cors = require('cors');
-const csv = require('csv-parser');
-const fs = require('fs');
-const path = require('path');
 
 app.use(cors());
 app.use(express.json());
@@ -58,9 +64,13 @@ app.get('/api/keyoption/:symbol', async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
     const results = [];
 
-    const filePath = path.join('C:/Users/BodyWell/Desktop/Max app-봇2/data.csv');
+    const filePath = path.join(__dirname, 'data.csv');
 
     try {
+        if (!fs.existsSync(filePath)) {
+            return res.status(500).json({ error: 'CSV file not found on server' });
+        }
+
         fs.createReadStream(filePath)
             .pipe(csv())
             .on('data', (data) => {
@@ -69,11 +79,17 @@ app.get('/api/keyoption/:symbol', async (req, res) => {
                 }
             })
             .on('end', () => {
-                res.json({ data: results });
+                if (results.length === 0) {
+                    res.status(404).json({ error: `No data found for symbol: ${symbol}` });
+                } else {
+                    res.json({ data: results });
+                }
+            })
+            .on('error', (err) => {
+                res.status(500).json({ error: 'CSV parsing failed' });
             });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to read CSV file.' });
+        res.status(500).json({ error: 'Failed to read CSV file' });
     }
 });
 
