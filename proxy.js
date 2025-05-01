@@ -1,28 +1,15 @@
-import express from 'express';
-import cors from 'cors';
-import csv from 'csv-parser';
-import fs from 'fs';
-import path from 'path';
-import fetch from 'node-fetch';
-import { fileURLToPath } from 'url';
-import AbortController from 'abort-controller';    // npm i abort-controller
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// proxy.js 맨 위, app.use(cors()) 직전 등에 삽입
-app.use((req, res, next) => {
-    console.log(new Date().toISOString(), req.method, req.originalUrl);
-    next();
-  });
-
+const express = require('express');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000; // Render의 동적 포트 지원
+const cors = require('cors');
+const csv = require('csv-parser');
+const fs = require('fs');
+const path = require('path');
 
-app.use(cors());
+app.use(cors()); // 모든 라우트에 CORS 활성화
 app.use(express.json());
 
-// ===== NASDAQ Option Chain 데이터 가져오기 (MaxPain용) =====
+// ===== NASDAQ 옵션 체인 데이터 가져오기 (MaxPain용) =====
 app.get('/api/quote/:symbol/option-chain', async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
     const assetclass = req.query.assetclass || 'stocks';
@@ -35,51 +22,62 @@ app.get('/api/quote/:symbol/option-chain', async (req, res) => {
                 'Origin': 'https://www.nasdaq.com',
                 'Referer': 'https://www.nasdaq.com/',
             },
+            timeout: 10000, // 10초 타임아웃 설정
         });
         const data = await response.json();
         res.json(data);
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Error fetching Nasdaq option chain data.' });
+        console.error('Nasdaq 옵션 체인 오류:', error);
+        res.status(500).json({ error: 'Nasdaq 옵션 체인 데이터 가져오기 실패. API 차단 가능성 있음.' });
     }
 });
 
 // ===== NASDAQ 가격 데이터 가져오기 (현재가/변동률용) =====
-app.get('/api/quote/:symbol/option-chain', async (req, res) => {
+app.get('/api/quote/:symbol/info', async (req, res) => {
     const symbol = req.params.symbol.toUpperCase();
-  
-    // 1) 클라이언트가 보낸 쿼리스트링 그대로 사용
-    const params = new URLSearchParams(req.query).toString();
-    const url = `https://api.nasdaq.com/api/quote/${symbol}/option-chain?${params}`;
-  
-    // 2) 너무 오래 대기하지 않도록 타임아웃 설정 (예: 10초)
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-  
+    const assetclass = req.query.assetclass || 'stocks';
+
     try {
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json, text/plain, */*',
-          'User-Agent': 'Mozilla/5.0',  
-          'Origin': 'https://www.nasdaq.com',
-          'Referer': 'https://www.nasdaq.com/',
-        },
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-  
-      if (!response.ok) {
-        throw new Error(`Upstream status ${response.status}`);
-      }
-      const data = await response.json();
-      res.json(data);
-  
-    } catch (err) {
-      clearTimeout(timeout);
-      console.error('Proxy fetch error:', err.message);
-      res.status(502).json({ error: 'Upstream timeout or error' });
+        const response = await fetch(`https://api.nasdaq.com/api/quote/${symbol}/info?assetclass=${assetclass}`, {
+            headers: {
+                'Accept': 'application/json, text/plain, */*',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+                'Origin': 'https://www.nasdaq.com',
+                'Referer': 'https://www.nasdaq.com/',
+            },
+            timeout: 10000,
+        });
+        const data = await response.json();
+        res.json(data);
+    } catch (error) {
+        console.error('Nasdaq 정보 오류:', error);
+        res.status(500).json({ error: 'Nasdaq 정보 데이터 가져오기 실패. API 차단 가능성 있음.' });
     }
-  });
+});
+
+// ===== [신규] NASDAQ 옵션 체인 데이터 프록시 =====
+app.get('/api/proxy/option-chain', async (req, res) => {
+    const symbol = req.query.symbol?.toUpperCase() || 'TSLA';
+    const assetclass = req.query.assetclass || 'stocks';
+
+    try {
+        const response = await fetch(`https://api.nasdaq.com/api/quote/${symbol}/option-chain?assetclass=${assetclass}&limit=180`, {
+            headers: {
+                'Accept': 'application/json, text/plain, */*',
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+                'Origin': 'https://www.nasdaq.com',
+                'Referer': 'https://www.nasdaq.com/',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+            timeout: 10000,
+        });
+        const data = await response.json();
+        res.json({ data });
+    } catch (error) {
+        console.error('Nasdaq 프록시 오류:', error);
+        res.status(502).json({ error: 'Nasdaq 옵션 체인 데이터 가져오기 실패. API 차단 가능성 있음.' });
+    }
+});
 
 // ===== [추가] Key Option Data 검색 =====
 app.get('/api/keyoption/:symbol', async (req, res) => {
