@@ -1,134 +1,42 @@
-import express from 'express';
-import cors from 'cors';
-import csv from 'csv-parser';
-import fs from 'fs';
-import path from 'path';
-import fetch from 'node-fetch';
-import { fileURLToPath } from 'url';
-import AbortController from 'abort-controller';    // npm i abort-controller
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// proxy.js 맨 위, app.use(cors()) 직전 등에 삽입
-app.use((req, res, next) => {
-    console.log(new Date().toISOString(), req.method, req.originalUrl);
-    next();
-  });
-
+const express = require('express');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
+const cors = require('cors');
+const csv = require('csv-parser');
+const fs = require('fs');
+const path = require('path');
 
 app.use(cors());
 app.use(express.json());
 
-// ===== NASDAQ Option Chain 데이터 가져오기 (MaxPain용) =====
-app.get('/api/quote/:symbol/option-chain', async (req, res) => {
-    const symbol = req.params.symbol.toUpperCase();
-    const assetclass = req.query.assetclass || 'stocks';
+// === Key Option Data 검색 (CSV 파일 기반)
+app.get('/api/keyoption/:symbol', (req, res) => {
+  const symbol = req.params.symbol.toUpperCase();
+  const results = [];
+  const filePath = path.join(__dirname, 'data.csv'); // 🔁 반드시 Render 배포 폴더에 포함
 
-    try {
-        const response = await fetch(`https://api.nasdaq.com/api/quote/${symbol}/option-chain?assetclass=${assetclass}&limit=180`, {
-            headers: {
-                'Accept': 'application/json, text/plain, */*',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-                'Origin': 'https://www.nasdaq.com',
-                'Referer': 'https://www.nasdaq.com/',
-            },
-        });
-        const data = await response.json();
-        res.json(data);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Error fetching Nasdaq option chain data.' });
-    }
-});
-
-// ===== NASDAQ 가격 데이터 가져오기 (현재가/변동률용) =====
-app.get('/api/quote/:symbol/option-chain', async (req, res) => {
-    const symbol = req.params.symbol.toUpperCase();
-  
-    // 1) 클라이언트가 보낸 쿼리스트링 그대로 사용
-    const params = new URLSearchParams(req.query).toString();
-    const url = `https://api.nasdaq.com/api/quote/${symbol}/option-chain?${params}`;
-  
-    // 2) 너무 오래 대기하지 않도록 타임아웃 설정 (예: 10초)
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-  
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json, text/plain, */*',
-          'User-Agent': 'Mozilla/5.0',  
-          'Origin': 'https://www.nasdaq.com',
-          'Referer': 'https://www.nasdaq.com/',
-        },
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-  
-      if (!response.ok) {
-        throw new Error(`Upstream status ${response.status}`);
-      }
-      const data = await response.json();
-      res.json(data);
-  
-    } catch (err) {
-      clearTimeout(timeout);
-      console.error('Proxy fetch error:', err.message);
-      res.status(502).json({ error: 'Upstream timeout or error' });
-    }
-  });
-
-// ===== [추가] Key Option Data 검색 =====
-app.get('/api/keyoption/:symbol', async (req, res) => {
-    const symbol = req.params.symbol.toUpperCase();
-    const results = [];
-
-    const filePath = path.join(__dirname, 'data.csv');
-
-    try {
-        if (!fs.existsSync(filePath)) {
-            return res.status(500).json({ error: 'CSV file not found on server' });
+  try {
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', (data) => {
+        if (data.Symbol && data.Symbol.toUpperCase() === symbol) {
+          results.push(data);
         }
-
-        fs.createReadStream(filePath)
-            .pipe(csv())
-            .on('data', (data) => {
-                try {
-                    if (data.Symbol && data.Symbol.toUpperCase() === symbol) {
-                        results.push(data);
-                    }
-                } catch (err) {
-                    console.error('Row parsing error:', err);
-                }
-            })
-            .on('end', () => {
-                if (results.length === 0) {
-                    res.status(404).json({ error: `No data found for symbol: ${symbol}` });
-                } else {
-                    res.json({ data: results });
-                }
-            })
-            .on('error', (err) => {
-                console.error('CSV parsing error:', err);
-                res.status(500).json({ error: 'CSV parsing failed' });
-            });
-
-    } catch (err) {
-        console.error('File stream error:', err);
-        res.status(500).json({ error: 'Failed to process CSV file' });
-    }
+      })
+      .on('end', () => {
+        res.json({ data: results });
+      });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'CSV 파일 읽기 실패' });
+  }
 });
 
-// ===== HTML 파일을 제공하는 경로 설정 =====
-// ✅ 대신 아래처럼 텍스트 응답으로 처리하세요
+// 기본 라우터 (선택 사항)
 app.get('/', (req, res) => {
-    res.send('✅ Option API Server is Running.');
-  });
+  res.send('✅ CSV API 서버 작동 중');
+});
 
-// ===== 서버 실행 =====
 app.listen(port, () => {
-    console.log(`✅ Server is running: http://localhost:${port}`);
+  console.log(`✅ CSV Server Running at http://localhost:${port}`);
 });
