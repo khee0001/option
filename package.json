@@ -1,8 +1,8 @@
 {
-  "name": "option-api-server",
+  "name": "csv-api-server",
   "version": "1.0.0",
-  "description": "Node.js API for Excel and Nasdaq Option Data",
-  "main": "proxy.js",
+  "description": "API server to serve keyoption data from CSV",
+  "main": "proxy.js",  
   "scripts": {
     "start": "node proxy.js"
   },
@@ -10,5 +10,11 @@
     "cors": "^2.8.5",
     "csv-parser": "^3.0.0",
     "express": "^4.18.2"
-  }
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [],
+  "author": "your-name",
+  "license": "MIT"
 }
