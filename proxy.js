@@ -6,8 +6,12 @@ const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
 
-// ✅ 모든 도메인 허용 (CORS 문제 해결)
-app.use(cors({ origin: '*' }));
+// ✅ CORS 허용 (Firebase HTML 배포 도메인)
+app.use(cors({
+  origin: 'https://userid-2fccf.web.app',
+  methods: ['GET', 'POST'],
+  credentials: true
+}));
 
 // ✅ JSON 파싱 허용
 app.use(express.json());
@@ -16,7 +20,7 @@ app.use(express.json());
 app.get('/api/keyoption/:symbol', (req, res) => {
   const symbol = req.params.symbol?.toUpperCase();
   const results = [];
-  const filePath = path.join(__dirname, 'data.csv'); // 반드시 Render zip에 포함되어야 함
+  const filePath = path.join(__dirname, 'data.csv');
 
   if (!symbol) {
     return res.status(400).json({ error: 'Symbol 파라미터 누락' });
