@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 // ✅ 모든 도메인 허용 (CORS 문제 해결)
-app.use(cors());
+app.use(cors({ origin: '*' }));
 
 // ✅ JSON 파싱 허용
 app.use(express.json());
