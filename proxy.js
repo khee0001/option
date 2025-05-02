@@ -5,19 +5,16 @@ const cors = require('cors');
 const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
+const fetch = require('node-fetch');
 
-// CORS 설정
+// ✅ CORS 설정
 app.use(cors({
   origin: 'https://userid-2fccf.web.app',
-  methods: ['GET', 'POST', 'OPTIONS'], // OPTIONS 메서드 추가
+  methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
-
-// 모든 경로에 대해 OPTIONS 요청 처리
 app.options('*', cors());
-
-// 수동으로 CORS 헤더 추가
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', 'https://userid-2fccf.web.app');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -26,10 +23,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// JSON 파싱 허용
 app.use(express.json());
 
-// Key Option API
+// ✅ Key Option API
 app.get('/api/keyoption/:symbol', (req, res) => {
   const symbol = req.params.symbol?.toUpperCase();
   const results = [];
@@ -64,12 +60,55 @@ app.get('/api/keyoption/:symbol', (req, res) => {
   }
 });
 
-// 기본 확인용 라우터
-app.get('/', (req, res) => {
-  res.send('✅ Render CSV API 서버가 정상 작동 중입니다.');
+// ✅ NASDAQ 옵션 체인 프록시 (MaxPain용)
+app.get('/api/quote/:symbol/option-chain', async (req, res) => {
+  const symbol = req.params.symbol.toUpperCase();
+  const assetclass = req.query.assetclass || 'stocks';
+
+  try {
+    const response = await fetch(`https://api.nasdaq.com/api/quote/${symbol}/option-chain?assetclass=${assetclass}&limit=180`, {
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Origin': 'https://www.nasdaq.com',
+        'Referer': 'https://www.nasdaq.com/'
+      }
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'NASDAQ 옵션 데이터를 가져오는 중 오류 발생' });
+  }
 });
 
-// 서버 시작
+// ✅ NASDAQ 현재가 프록시 (info)
+app.get('/api/quote/:symbol/info', async (req, res) => {
+  const symbol = req.params.symbol.toUpperCase();
+  const assetclass = req.query.assetclass || 'stocks';
+
+  try {
+    const response = await fetch(`https://api.nasdaq.com/api/quote/${symbol}/info?assetclass=${assetclass}`, {
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Origin': 'https://www.nasdaq.com',
+        'Referer': 'https://www.nasdaq.com/'
+      }
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'NASDAQ 현재가 데이터를 가져오는 중 오류 발생' });
+  }
+});
+
+// 기본 라우트
+app.get('/', (req, res) => {
+  res.send('✅ Render CSV + NASDAQ Proxy API 서버 작동 중');
+});
+
 app.listen(port, () => {
-  console.log(`✅ CSV Server Running at http://localhost:${port}`);
+  console.log(`✅ 서버 실행 중: http://localhost:${port}`);
 });

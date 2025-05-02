@@ -2,14 +2,15 @@
   "name": "csv-api-server",
   "version": "1.0.0",
   "description": "API server to serve keyoption data from CSV",
-  "main": "proxy.js",  
+  "main": "proxy.js",
   "scripts": {
     "start": "node proxy.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "csv-parser": "^3.0.0",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "node-fetch": "^2.6.9"
   },
   "engines": {
     "node": ">=18.0.0"
